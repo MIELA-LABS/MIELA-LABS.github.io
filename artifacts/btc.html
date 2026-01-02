@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MIELA LABS | BTC PROTOCOL</title>
+<style>
+    @import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;600;700&display=swap');
+
+    body, html {
+        margin: 0;
+        padding: 0;
+        width: 100%;
+        height: 100%;
+        background-color: #050505;
+        overflow: hidden;
+        font-family: 'Rajdhani', sans-serif;
+        user-select: none;
+    }
+
+    #canvas-container {
+        width: 100%;
+        height: 100%;
+        position: absolute;
+        z-index: 1;
+        background: radial-gradient(circle at center, #1a0f00 0%, #000000 100%);
+    }
+
+    .ui-layer {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        z-index: 2;
+        pointer-events: none;
+        padding: 40px;
+        box-sizing: border-box;
+        color: #fff;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+    }
+
+    .header {
+        display: flex;
+        align-items: center;
+        gap: 20px;
+    }
+
+    .btc-logo {
+        font-size: 3rem;
+        color: #F7931A;
+        font-weight: 700;
+        border: 2px solid #F7931A;
+        width: 60px;
+        height: 60px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 50%;
+        box-shadow: 0 0 20px rgba(247, 147, 26, 0.4);
+        text-shadow: 0 0 10px #F7931A;
+    }
+
+    h1 {
+        margin: 0;
+        font-size: 2.5rem;
+        letter-spacing: 2px;
+        line-height: 1;
+    }
+
+    .network {
+        color: #F7931A;
+        text-shadow: 0 0 15px rgba(247, 147, 26, 0.5);
+    }
+
+    .sub {
+        font-size: 0.9rem;
+        color: #888;
+        letter-spacing: 4px;
+        margin-top: 5px;
+    }
+
+    .stats {
+        margin-bottom: 40px;
+    }
+
+    .stat-row {
+        display: flex;
+        gap: 15px;
+        margin-bottom: 10px;
+        font-size: 1.1rem;
+        background: rgba(0,0,0,0.5);
+        padding: 5px 10px;
+        border-left: 2px solid #F7931A;
+        width: fit-content;
+    }
+
+    .label {
+        color: #888;
+        font-weight: 600;
+    }
+
+    .value {
+        color: #F7931A;
+        font-weight: 700;
+        text-shadow: 0 0 10px rgba(247, 147, 26, 0.3);
+    }
+
+    .interaction-hint {
+        text-align: center;
+        color: rgba(255, 255, 255, 0.3);
+        letter-spacing: 3px;
+        font-size: 0.8rem;
+        animation: pulse 2s infinite;
+        width: 100%;
+        position: absolute;
+        bottom: 40px;
+        left: 0;
+    }
+
+    @keyframes pulse { 0%, 100% { opacity: 0.3; } 50% { opacity: 0.8; } }
+
+</style>
+<!-- Three.js Imports -->
+<script type="importmap">
+  {
+    "imports": {
+      "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+    }
+  }
+</script>
+</head>
+<body>
+
+    <div id="canvas-container"></div>
+
+    <div class="ui-layer">
+        <div class="header">
+            <div class="btc-logo">₿</div>
+            <div class="title-group">
+                <h1>BITCOIN <span class="network">NETWORK</span></h1>
+                <div class="sub">PEER-TO-PEER ELECTRONIC CASH SYSTEM</div>
+            </div>
+        </div>
+
+        <div class="stats">
+            <div class="stat-row">
+                <span class="label">BLOCK HEIGHT:</span>
+                <span class="value" id="block-height">840,000</span>
+            </div>
+            <div class="stat-row">
+                <span class="label">HASH RATE:</span>
+                <span class="value">650 EH/s</span>
+            </div>
+            <div class="stat-row">
+                <span class="label">SUPPLY:</span>
+                <span class="value">19.7M / 21M</span>
+            </div>
+        </div>
+
+        <div class="interaction-hint">
+            CLICK & HOLD TO MINE // DRAG TO ROTATE
+        </div>
+    </div>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+
+// --- AYARLAR ---
+const CONFIG = {
+    btcColor: 0xF7931A, // Resmi Bitcoin Turuncusu
+    goldColor: 0xFFD700,
+    darkColor: 0x111111,
+    bloomStrength: 1.5,
+    bloomRadius: 0.4,
+    bloomThreshold: 0.1
+};
+
+// --- SAHNE ---
+const container = document.getElementById('canvas-container');
+const scene = new THREE.Scene();
+scene.fog = new THREE.FogExp2(0x000000, 0.02);
+
+const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 100);
+camera.position.set(0, 0, 14);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.toneMapping = THREE.ReinhardToneMapping;
+container.appendChild(renderer.domElement);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.autoRotate = true;
+controls.autoRotateSpeed = 1.0;
+controls.enablePan = false;
+controls.minDistance = 5;
+controls.maxDistance = 20;
+
+// --- 1. BITCOIN DOKUSU OLUŞTURMA (CANVAS) ---
+function createBitcoinTexture() {
+    const canvas = document.createElement('canvas');
+    canvas.width = 1024;
+    canvas.height = 1024;
+    const ctx = canvas.getContext('2d');
+
+    // Arka plan (Turuncu)
+    ctx.fillStyle = '#F7931A';
+    ctx.beginPath();
+    ctx.arc(512, 512, 500, 0, Math.PI * 2);
+    ctx.fill();
+
+    // İç Halka
+    ctx.strokeStyle = '#e68a19';
+    ctx.lineWidth = 30;
+    ctx.beginPath();
+    ctx.arc(512, 512, 450, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // "B" Sembolü (Beyaz)
+    ctx.fillStyle = '#FFFFFF';
+    ctx.font = 'bold 600px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    
+    ctx.save();
+    ctx.translate(512, 512);
+    ctx.rotate(14 * Math.PI / 180); 
+    ctx.fillText('₿', 0, 40);
+    ctx.restore();
+
+    // Devre Kartı Detayları
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
+    ctx.lineWidth = 8;
+    for(let i=0; i<40; i++) {
+        ctx.beginPath();
+        const x = Math.random()*1024;
+        const y = Math.random()*1024;
+        ctx.moveTo(x, y);
+        ctx.lineTo(x + (Math.random()-0.5)*200, y + (Math.random()-0.5)*200);
+        ctx.stroke();
+        
+        // Noktalar
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+        ctx.beginPath();
+        ctx.arc(x, y, 5, 0, Math.PI*2);
+        ctx.fill();
+    }
+
+    return new THREE.CanvasTexture(canvas);
+}
+
+const btcTexture = createBitcoinTexture();
+
+// --- 2. MERKEZİ COIN (THE COIN) ---
+const coinGroup = new THREE.Group();
+
+// Ana Gövde
+const geometry = new THREE.CylinderGeometry(3, 3, 0.4, 64);
+const materialSide = new THREE.MeshStandardMaterial({ 
+    color: CONFIG.goldColor, 
+    roughness: 0.3, 
+    metalness: 1.0 
+});
+const materialFace = new THREE.MeshStandardMaterial({ 
+    map: btcTexture,
+    roughness: 0.2,
+    metalness: 0.6,
+    bumpMap: btcTexture,
+    bumpScale: 0.05
+});
+
+const coin = new THREE.Mesh(geometry, [materialSide, materialFace, materialFace]);
+coin.rotation.x = Math.PI / 2;
+coinGroup.add(coin);
+
+// Network Halkası
+const ringGeo = new THREE.TorusGeometry(4.5, 0.05, 16, 100);
+const ringMat = new THREE.MeshBasicMaterial({ color: CONFIG.btcColor, transparent: true, opacity: 0.5 });
+const ring = new THREE.Mesh(ringGeo, ringMat);
+coinGroup.add(ring);
+
+// Veri Parçacıkları
+const bitsGeo = new THREE.IcosahedronGeometry(0.1, 0);
+const bitsMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+const bitsGroup = new THREE.Group();
+
+for(let i=0; i<12; i++) {
+    const bit = new THREE.Mesh(bitsGeo, bitsMat);
+    const angle = (i / 12) * Math.PI * 2;
+    bit.position.set(Math.cos(angle) * 4.5, Math.sin(angle) * 4.5, 0);
+    bitsGroup.add(bit);
+}
+coinGroup.add(bitsGroup);
+
+scene.add(coinGroup);
+
+// --- 3. BLOCKCHAIN (KÜPLER) ---
+const blocksGroup = new THREE.Group();
+const blockGeo = new THREE.BoxGeometry(0.8, 0.8, 0.8);
+const blockMat = new THREE.MeshStandardMaterial({ 
+    color: 0x222222, 
+    emissive: CONFIG.btcColor,
+    emissiveIntensity: 0.2,
+    roughness: 0.1,
+    metalness: 0.8
+});
+const wireMat = new THREE.MeshBasicMaterial({ color: CONFIG.btcColor, wireframe: true, transparent: true, opacity: 0.3 });
+
+const blocks = [];
+for(let i=0; i<20; i++) {
+    const group = new THREE.Group();
+    const mesh = new THREE.Mesh(blockGeo, blockMat.clone()); // Clone material for individual emission
+    const wire = new THREE.Mesh(blockGeo, wireMat);
+    group.add(mesh, wire);
+    
+    const angle = i * 0.5;
+    const radius = 6 + i * 0.2;
+    group.position.set(Math.cos(angle) * radius, Math.sin(angle) * radius, (i - 10) * 2);
+    
+    blocksGroup.add(group);
+    blocks.push(group);
+}
+scene.add(blocksGroup);
+
+// --- 4. MADENCİLİK PARÇACIKLARI ---
+const particlesGeo = new THREE.BufferGeometry();
+const particlesCount = 1500;
+const pPos = [];
+const pVel = [];
+
+for(let i=0; i<particlesCount; i++) {
+    pPos.push((Math.random()-0.5)*30, (Math.random()-0.5)*30, (Math.random()-0.5)*30);
+    pVel.push((Math.random()-0.5)*0.05, (Math.random()-0.5)*0.05, (Math.random()-0.5)*0.05);
+}
+
+particlesGeo.setAttribute('position', new THREE.Float32BufferAttribute(pPos, 3));
+const particlesMat = new THREE.PointsMaterial({
+    color: CONFIG.btcColor,
+    size: 0.08,
+    transparent: true,
+    opacity: 0.6,
+    blending: THREE.AdditiveBlending
+});
+const particleSystem = new THREE.Points(particlesGeo, particlesMat);
+scene.add(particleSystem);
+
+// --- IŞIKLANDIRMA ---
+const ambientLight = new THREE.AmbientLight(0xffffff, 0.2);
+scene.add(ambientLight);
+
+const pointLight = new THREE.PointLight(CONFIG.btcColor, 2, 30);
+pointLight.position.set(5, 5, 10);
+scene.add(pointLight);
+
+const blueLight = new THREE.PointLight(0x0088ff, 1, 30);
+blueLight.position.set(-5, -5, 5);
+scene.add(blueLight);
+
+// --- POST PROCESSING ---
+const renderScene = new RenderPass(scene, camera);
+const bloomPass = new UnrealBloomPass(
+    new THREE.Vector2(window.innerWidth, window.innerHeight),
+    CONFIG.bloomStrength,
+    CONFIG.bloomRadius,
+    CONFIG.bloomThreshold
+);
+
+const composer = new EffectComposer(renderer);
+composer.addPass(renderScene);
+composer.addPass(bloomPass);
+
+// --- ETKİLEŞİM ---
+let isMining = false;
+let miningSpeed = 0;
+let blockHeight = 840000;
+
+window.addEventListener('mousedown', () => {
+    isMining = true;
+    document.body.style.cursor = 'grabbing';
+});
+
+window.addEventListener('mouseup', () => {
+    isMining = false;
+    document.body.style.cursor = 'default';
+});
+
+// --- ANİMASYON ---
+const clock = new THREE.Clock();
+
+function animate() {
+    requestAnimationFrame(animate);
+    const time = clock.getElapsedTime();
+    
+    // 1. Coin Hareketi
+    const targetSpeed = isMining ? 15.0 : 1.0;
+    miningSpeed += (targetSpeed - miningSpeed) * 0.05;
+    
+    coin.rotation.z += 0.01 * miningSpeed;
+    coinGroup.rotation.y = Math.sin(time * 0.5) * 0.2;
+    
+    // 2. Network Halkası
+    bitsGroup.rotation.z -= 0.02 * miningSpeed;
+    
+    // 3. Blockchain Akışı
+    blocks.forEach((block, i) => {
+        const angleOffset = time * 0.5 + (i * 0.5);
+        const radius = 6;
+        
+        block.position.x = Math.cos(angleOffset) * radius;
+        block.position.y = Math.sin(angleOffset) * radius;
+        
+        block.rotation.x += 0.02;
+        block.rotation.y += 0.02;
+        
+        // Mining sırasında bloklar parlar
+        if(isMining) {
+            block.children[0].material.emissiveIntensity = 2.0 + Math.sin(time * 20 + i);
+        } else {
+            block.children[0].material.emissiveIntensity = 0.2;
+        }
+    });
+    
+    // 4. Parçacıklar (Hash Power)
+    const positions = particleSystem.geometry.attributes.position.array;
+    for(let i=0; i<particlesCount; i++) {
+        const idx = i * 3;
+        
+        if(isMining) {
+            // Merkeze çekil (Mining)
+            positions[idx]   += (0 - positions[idx]) * 0.05;
+            positions[idx+1] += (0 - positions[idx+1]) * 0.05;
+            positions[idx+2] += (0 - positions[idx+2]) * 0.05;
+            
+            // Merkeze gelince dışarı ışınla (Yeni Hash)
+            if(Math.abs(positions[idx]) < 0.5) {
+                const r = 20;
+                positions[idx] = (Math.random()-0.5) * r;
+                positions[idx+1] = (Math.random()-0.5) * r;
+                positions[idx+2] = (Math.random()-0.5) * r;
+            }
+        } else {
+            // Rastgele süzül
+            positions[idx] += Math.sin(time + i) * 0.01;
+            positions[idx+1] += Math.cos(time + i) * 0.01;
+        }
+    }
+    particleSystem.geometry.attributes.position.needsUpdate = true;
+    
+    // 5. UI Güncelleme
+    if(isMining && Math.random() > 0.8) {
+        blockHeight++;
+        document.getElementById('block-height').innerText = blockHeight.toLocaleString();
+        
+        // Hızlı sayı artışı efekti
+        const val = document.getElementById('block-height');
+        val.style.color = '#fff';
+        setTimeout(() => val.style.color = '#F7931A', 50);
+    }
+
+    controls.update();
+    composer.render();
+}
+
+window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    composer.setSize(window.innerWidth, window.innerHeight);
+});
+
+animate();
+
+</script>
+</body>
+</html>

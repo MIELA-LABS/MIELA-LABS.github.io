@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MIELA LABS | STARGATE</title>
+<style>
+    @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&display=swap');
+
+    body, html {
+        margin: 0;
+        padding: 0;
+        width: 100%;
+        height: 100%;
+        background-color: #000;
+        overflow: hidden;
+        font-family: 'Orbitron', sans-serif;
+    }
+
+    #canvas-container {
+        width: 100%;
+        height: 100%;
+        position: absolute;
+        z-index: 1;
+        background: radial-gradient(circle at center, #111 0%, #000 100%);
+    }
+
+    .ui-layer {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        z-index: 2;
+        pointer-events: none;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        padding: 40px;
+        box-sizing: border-box;
+    }
+
+    .header {
+        text-align: center;
+        text-shadow: 0 0 20px rgba(0, 200, 255, 0.5);
+    }
+
+    h1 {
+        color: #fff;
+        font-size: 3rem;
+        margin: 0;
+        letter-spacing: 10px;
+    }
+
+    .status {
+        color: #00ffff;
+        animation: pulse 2s infinite;
+    }
+
+    .sub {
+        color: #ff6600; /* Chevron Turuncusu */
+        font-size: 1rem;
+        letter-spacing: 5px;
+        margin-top: 10px;
+        font-weight: 700;
+    }
+
+    .instruction {
+        text-align: center;
+        color: rgba(255, 255, 255, 0.5);
+        font-size: 0.8rem;
+        letter-spacing: 3px;
+        margin-bottom: 20px;
+    }
+
+    @keyframes pulse {
+        0%, 100% { opacity: 1; text-shadow: 0 0 20px #00ffff; }
+        50% { opacity: 0.5; text-shadow: 0 0 5px #00ffff; }
+    }
+</style>
+
+<!-- SHADER: STARGATE SU EFEKTİ -->
+<script type="x-shader/x-vertex" id="vertexShader">
+    uniform float uTime;
+    uniform vec2 uMouse;
+    uniform float uHover; // Mouse üzerinde mi?
+    
+    varying vec2 vUv;
+    varying float vDisplacement;
+
+    void main() {
+        vUv = uv;
+        vec3 pos = position;
+        
+        // Mouse Etkileşimi (Dalgalanma)
+        // Mouse pozisyonuna olan uzaklığı hesapla
+        float dist = distance(uv, uMouse);
+        
+        // Mouse yaklaştığında vertex'leri Z ekseninde (ileri/geri) it
+        // Bu, suya dokunma hissi verir
+        float wave = sin(dist * 20.0 - uTime * 5.0) * 0.5;
+        float mask = smoothstep(0.5, 0.0, dist); // Sadece mouse etrafında
+        
+        float displacement = wave * mask * uHover;
+        pos.z += displacement;
+        
+        vDisplacement = displacement;
+
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
+    }
+</script>
+
+<script type="x-shader/x-fragment" id="fragmentShader">
+    uniform float uTime;
+    uniform vec2 uMouse;
+    
+    varying vec2 vUv;
+    varying float vDisplacement;
+
+    // --- NOISE FONKSİYONLARI (Su dokusu için) ---
+    vec3 mod289(vec3 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
+    vec2 mod289(vec2 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
+    vec3 permute(vec3 x) { return mod289(((x*34.0)+1.0)*x); }
+    float snoise(vec2 v) {
+        const vec4 C = vec4(0.211324865405187, 0.366025403784439,
+                 -0.577350269189626, 0.024390243902439);
+        vec2 i  = floor(v + dot(v, C.yy) );
+        vec2 x0 = v -   i + dot(i, C.xx);
+        vec2 i1;
+        i1 = (x0.x > x0.y) ? vec2(1.0, 0.0) : vec2(0.0, 1.0);
+        vec4 x12 = x0.xyxy + C.xxzz;
+        x12.xy -= i1;
+        i = mod289(i);
+        vec3 p = permute( permute( i.y + vec3(0.0, i1.y, 1.0 ))
+        + i.x + vec3(0.0, i1.x, 1.0 ));
+        vec3 m = max(0.5 - vec3(dot(x0,x0), dot(x12.xy,x12.xy), dot(x12.zw,x12.zw)), 0.0);
+        m = m*m ;
+        m = m*m ;
+        vec3 x = 2.0 * fract(p * C.www) - 1.0;
+        vec3 h = abs(x) - 0.5;
+        vec3 ox = floor(x + 0.5);
+        vec3 a0 = x - ox;
+        m *= 1.79284291400159 - 0.85373472095314 * ( a0*a0 + h*h );
+        vec3 g;
+        g.x  = a0.x  * x0.x  + h.x  * x0.y;
+        g.yz = a0.yz * x12.xz + h.yz * x12.yw;
+        return 130.0 * dot(m, g);
+    }
+
+    void main() {
+        // Koordinatları merkeze al (-1 ile 1 arası)
+        vec2 centeredUv = vUv * 2.0 - 1.0;
+        float distFromCenter = length(centeredUv);
+        
+        // Dairesel Maske (Kapının dışına taşmasın)
+        if(distFromCenter > 1.0) discard;
+
+        // --- STARGATE SU EFEKTİ ---
+        // 1. Katman: Yavaş akan derin su
+        float noise1 = snoise(centeredUv * 3.0 + vec2(0.0, uTime * 0.2));
+        
+        // 2. Katman: Hızlı akan yüzey dalgaları (Caustics)
+        // Polar koordinatlara benzer bir bükülme ekleyelim
+        float angle = atan(centeredUv.y, centeredUv.x);
+        vec2 swirlUv = centeredUv + vec2(cos(angle + uTime), sin(angle + uTime)) * 0.1;
+        float noise2 = snoise(swirlUv * 6.0 - vec2(0.0, uTime * 0.8));
+        
+        // Noise'ları birleştir
+        float combinedNoise = noise1 * 0.6 + noise2 * 0.4;
+        
+        // --- RENK PALETİ ---
+        vec3 deepBlue = vec3(0.0, 0.05, 0.2); // Derinlik
+        vec3 brightCyan = vec3(0.0, 0.8, 1.0); // Parlaklık
+        vec3 white = vec3(1.0, 1.0, 1.0); // Köpük/Işık
+        
+        // Karışım
+        vec3 color = mix(deepBlue, brightCyan, smoothstep(-0.2, 0.6, combinedNoise));
+        
+        // Parlak noktalar (Caustics)
+        color = mix(color, white, smoothstep(0.7, 1.0, combinedNoise));
+        
+        // Mouse etkileşimi ile gelen ekstra parlaklık
+        color += vec3(0.5, 0.8, 1.0) * vDisplacement * 2.0;
+
+        // Kenarlara doğru karartma (Vignette) - Derinlik hissi için
+        float vignette = smoothstep(1.0, 0.8, distFromCenter);
+        color *= vignette;
+
+        gl_FragColor = vec4(color, 1.0);
+    }
+</script>
+
+<!-- Three.js Imports -->
+<script type="importmap">
+  {
+    "imports": {
+      "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+    }
+  }
+</script>
+</head>
+<body>
+
+    <div id="canvas-container"></div>
+
+    <div class="ui-layer">
+        <div class="header">
+            <h1>STARGATE <span class="status">ACTIVE</span></h1>
+            <div class="sub">CHEVRON 7 // LOCKED</div>
+        </div>
+        <div class="instruction">
+            TOUCH THE EVENT HORIZON
+        </div>
+    </div>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+
+// --- AYARLAR ---
+const CONFIG = {
+    ringRadius: 3.5,
+    tubeRadius: 0.3,
+    chevronCount: 9, // SG-1 standardı 9 chevron
+    bloomStrength: 2.5, // Elektrikli his için yüksek bloom
+    bloomRadius: 0.4,
+    bloomThreshold: 0.1
+};
+
+// --- SAHNE KURULUMU ---
+const container = document.getElementById('canvas-container');
+const scene = new THREE.Scene();
+// Uzay sisi
+scene.fog = new THREE.FogExp2(0x000000, 0.02);
+
+const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 100);
+camera.position.set(0, 0, 8);
+
+const renderer = new THREE.WebGLRenderer({ antialias: false }); // Bloom için false daha iyi performans
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.toneMapping = THREE.ReinhardToneMapping;
+container.appendChild(renderer.domElement);
+
+// --- KONTROLLER ---
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.enableZoom = true;
+controls.maxDistance = 15;
+controls.minDistance = 2;
+
+// --- STARGATE İNŞASI ---
+const gateGroup = new THREE.Group();
+scene.add(gateGroup);
+
+// 1. DIŞ HALKA (Naquadah Metal)
+const ringGeo = new THREE.TorusGeometry(CONFIG.ringRadius, CONFIG.tubeRadius, 30, 100);
+const ringMat = new THREE.MeshStandardMaterial({
+    color: 0x444444,
+    roughness: 0.4,
+    metalness: 0.8,
+});
+const ring = new THREE.Mesh(ringGeo, ringMat);
+gateGroup.add(ring);
+
+// 2. CHEVRONS (Kilitler)
+const chevronGeo = new THREE.BoxGeometry(0.8, 0.4, 0.5);
+const chevronMat = new THREE.MeshStandardMaterial({ color: 0x333333, metalness: 0.8 });
+const glowMat = new THREE.MeshBasicMaterial({ color: 0xff4400 }); // Turuncu Neon
+
+for (let i = 0; i < CONFIG.chevronCount; i++) {
+    const angle = (i / CONFIG.chevronCount) * Math.PI * 2;
+    
+    const chevronGroup = new THREE.Group();
+    
+    // Ana gövde
+    const body = new THREE.Mesh(chevronGeo, chevronMat);
+    chevronGroup.add(body);
+    
+    // Işık kısmı (V şeklinde)
+    const light = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.1, 0.55), glowMat);
+    light.position.y = 0;
+    chevronGroup.add(light);
+
+    // Pozisyonlama
+    chevronGroup.position.x = Math.cos(angle) * CONFIG.ringRadius;
+    chevronGroup.position.y = Math.sin(angle) * CONFIG.ringRadius;
+    chevronGroup.rotation.z = angle;
+    
+    gateGroup.add(chevronGroup);
+}
+
+// 3. OLAY UFKU (EVENT HORIZON - SU EFEKTİ)
+const horizonGeo = new THREE.PlaneGeometry(CONFIG.ringRadius * 2, CONFIG.ringRadius * 2, 64, 64);
+const horizonMat = new THREE.ShaderMaterial({
+    vertexShader: document.getElementById('vertexShader').textContent,
+    fragmentShader: document.getElementById('fragmentShader').textContent,
+    uniforms: {
+        uTime: { value: 0 },
+        uMouse: { value: new THREE.Vector2(0.5, 0.5) },
+        uHover: { value: 0 }
+    },
+    transparent: true,
+    side: THREE.DoubleSide,
+    blending: THREE.AdditiveBlending // Parlaklık için
+});
+
+const eventHorizon = new THREE.Mesh(horizonGeo, horizonMat);
+gateGroup.add(eventHorizon);
+
+// --- IŞIKLANDIRMA ---
+const ambientLight = new THREE.AmbientLight(0xffffff, 0.1);
+scene.add(ambientLight);
+
+// Kapının kendi ışığı (Mavi parıltı)
+const gateLight = new THREE.PointLight(0x00aaff, 2, 20);
+gateLight.position.set(0, 0, 2);
+scene.add(gateLight);
+
+// --- POST PROCESSING (BLOOM) ---
+const renderScene = new RenderPass(scene, camera);
+const bloomPass = new UnrealBloomPass(
+    new THREE.Vector2(window.innerWidth, window.innerHeight),
+    CONFIG.bloomStrength,
+    CONFIG.bloomRadius,
+    CONFIG.bloomThreshold
+);
+
+const composer = new EffectComposer(renderer);
+composer.addPass(renderScene);
+composer.addPass(bloomPass);
+
+// --- ETKİLEŞİM (RAYCASTER) ---
+const raycaster = new THREE.Raycaster();
+const mouse = new THREE.Vector2();
+const targetMouse = new THREE.Vector2(0.5, 0.5); // Shader için UV koordinatı (0-1 arası)
+let hoverValue = 0;
+
+window.addEventListener('mousemove', (event) => {
+    // Ekran koordinatları (-1 to 1)
+    mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+    mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+    // Raycasting
+    raycaster.setFromCamera(mouse, camera);
+    const intersects = raycaster.intersectObject(eventHorizon);
+
+    if (intersects.length > 0) {
+        // UV koordinatlarını al (0 to 1)
+        targetMouse.copy(intersects[0].uv);
+        hoverValue = 1.0; // Aktif
+        document.body.style.cursor = 'pointer';
+    } else {
+        hoverValue = 0.0; // Pasif
+        document.body.style.cursor = 'default';
+    }
+});
+
+// --- ANİMASYON DÖNGÜSÜ ---
+const clock = new THREE.Clock();
+
+function animate() {
+    requestAnimationFrame(animate);
+    
+    const time = clock.getElapsedTime();
+    
+    // Shader Güncelleme
+    horizonMat.uniforms.uTime.value = time;
+    
+    // Mouse pozisyonunu yumuşak geçişle güncelle (Lerp)
+    horizonMat.uniforms.uMouse.value.lerp(targetMouse, 0.1);
+    
+    // Hover efektini yumuşak geçişle güncelle
+    horizonMat.uniforms.uHover.value = THREE.MathUtils.lerp(horizonMat.uniforms.uHover.value, hoverValue, 0.1);
+
+    // Hafif kamera hareketi (Sinematik his)
+    camera.position.x = Math.sin(time * 0.2) * 0.5;
+    camera.position.y = Math.cos(time * 0.15) * 0.5;
+    camera.lookAt(0, 0, 0);
+
+    controls.update();
+    composer.render();
+}
+
+window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    composer.setSize(window.innerWidth, window.innerHeight);
+});
+
+animate();
+</script>
+</body>
+</html>

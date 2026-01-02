@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MIELA LABS | HERMETIC BLOB</title>
+<style>
+    @import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@300;700&display=swap');
+
+    body {
+        margin: 0;
+        overflow: hidden;
+        background-color: #000;
+        font-family: 'Rajdhani', sans-serif;
+    }
+
+    #canvas-container {
+        width: 100vw;
+        height: 100vh;
+        position: absolute;
+        top: 0;
+        left: 0;
+        z-index: 1;
+    }
+
+    .ui {
+        position: absolute;
+        bottom: 40px;
+        left: 40px;
+        color: rgba(255, 255, 255, 0.7);
+        pointer-events: none;
+        text-transform: uppercase;
+        z-index: 2;
+    }
+
+    h1 {
+        font-size: 2.5rem;
+        margin: 0;
+        letter-spacing: 5px;
+        font-weight: 700;
+        text-shadow: 0 0 15px rgba(0, 255, 255, 0.5);
+    }
+
+    p {
+        font-size: 0.8rem;
+        letter-spacing: 2px;
+        font-weight: 300;
+        color: rgba(255, 255, 255, 0.4);
+    }
+</style>
+
+<!-- SHADERS (GLSL KODLARI) -->
+<!-- Vertex Shader: Şekli bozan ve hareket ettiren matematik -->
+<script type="x-shader/x-vertex" id="vertexShader">
+  uniform float uTime;
+  uniform vec2 uMouse;
+  varying vec3 vNormal;
+  varying vec3 vPosition;
+
+  // Simplex Noise Fonksiyonları
+  vec3 mod289(vec3 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
+  vec4 mod289(vec4 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
+  vec4 permute(vec4 x) { return mod289(((x*34.0)+1.0)*x); }
+  vec4 taylorInvSqrt(vec4 r) { return 1.79284291400159 - 0.85373472095314 * r; }
+
+  float snoise(vec3 v) {
+    const vec2 C = vec2(1.0/6.0, 1.0/3.0);
+    const vec4 D = vec4(0.0, 0.5, 1.0, 2.0);
+    vec3 i = floor(v + dot(v, C.yyy));
+    vec3 x0 = v - i + dot(i, C.xxx);
+    vec3 g = step(x0.yzx, x0.xyz);
+    vec3 l = 1.0 - g;
+    vec3 i1 = min(g.xyz, l.zxy);
+    vec3 i2 = max(g.xyz, l.zxy);
+    vec3 x1 = x0 - i1 + C.xxx;
+    vec3 x2 = x0 - i2 + C.yyy;
+    vec3 x3 = x0 - D.yyy;
+    i = mod289(i);
+    vec4 p = permute(permute(permute(i.z + vec4(0.0, i1.z, i2.z, 1.0)) + i.y + vec4(0.0, i1.y, i2.y, 1.0)) + i.x + vec4(0.0, i1.x, i2.x, 1.0));
+    float n_ = 0.142857142857;
+    vec3 ns = n_ * D.wyz - D.xzx;
+    vec4 j = p - 49.0 * floor(p * ns.z * ns.z);
+    vec4 x_ = floor(j * ns.z);
+    vec4 y_ = floor(j - 7.0 * x_);
+    vec4 x = x_ * ns.x + ns.yyyy;
+    vec4 y = y_ * ns.x + ns.yyyy;
+    vec4 h = 1.0 - abs(x) - abs(y);
+    vec4 b0 = vec4(x.xy, y.xy);
+    vec4 b1 = vec4(x.zw, y.zw);
+    vec4 s0 = floor(b0) * 2.0 + 1.0;
+    vec4 s1 = floor(b1) * 2.0 + 1.0;
+    vec4 sh = -step(h, vec4(0.0));
+    vec4 a0 = b0.xzyw + s0.xzyw * sh.xxyy;
+    vec4 a1 = b1.xzyw + s1.xzyw * sh.zzww;
+    vec3 p0 = vec3(a0.xy, h.x);
+    vec3 p1 = vec3(a0.zw, h.y);
+    vec3 p2 = vec3(a1.xy, h.z);
+    vec3 p3 = vec3(a1.zw, h.w);
+    vec4 norm = taylorInvSqrt(vec4(dot(p0, p0), dot(p1, p1), dot(p2, p2), dot(p3, p3)));
+    p0 *= norm.x; p1 *= norm.y; p2 *= norm.z; p3 *= norm.w;
+    vec4 m = max(0.6 - vec4(dot(x0, x0), dot(x1, x1), dot(x2, x2), dot(x3, x3)), 0.0);
+    m = m * m;
+    return 42.0 * dot(m * m, vec4(dot(p0, x0), dot(p1, x1), dot(p2, x2), dot(p3, x3)));
+  }
+
+  void main() {
+    vNormal = normal;
+    
+    // Noise ile organik dalgalanma
+    float noise = snoise(position * 0.8 + uTime * 0.5) * 0.5;
+    vec3 newPosition = position + normal * noise;
+    
+    // Mouse Etkileşimi (İtme/Çekme)
+    vec3 mouse3D = vec3(uMouse.x * 5.0, uMouse.y * 5.0, 0.0);
+    float dist = distance(newPosition, mouse3D);
+    float repulsion = smoothstep(2.0, 0.0, dist) * 0.5;
+    newPosition += normal * repulsion;
+
+    vec4 modelViewPosition = modelViewMatrix * vec4(newPosition, 1.0);
+    gl_Position = projectionMatrix * modelViewPosition;
+    vPosition = newPosition;
+  }
+</script>
+
+<!-- Fragment Shader: Renk ve Işıklandırma -->
+<script type="x-shader/x-fragment" id="fragmentShader">
+  varying vec3 vNormal;
+  varying vec3 vPosition;
+  uniform float uTime;
+
+  void main() {
+    // Fresnel Efekti: Kenarlar daha parlak
+    float fresnel = 1.0 - dot(normalize(vPosition), vNormal);
+    fresnel = pow(fresnel, 2.0);
+    
+    // Renkleri zamana göre değiştir (Magenta <-> Cyan)
+    vec3 color1 = vec3(1.0, 0.0, 0.5); // Magenta
+    vec3 color2 = vec3(0.0, 0.5, 1.0); // Cyan
+    vec3 finalColor = mix(color1, color2, sin(uTime * 2.0 + vPosition.x) * 0.5 + 0.5);
+
+    gl_FragColor = vec4(finalColor, fresnel * 0.8);
+  }
+</script>
+
+<!-- Three.js Imports (ESM) -->
+<script type="importmap">
+  {
+    "imports": {
+      "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+    }
+  }
+</script>
+</head>
+<body>
+
+    <div id="canvas-container"></div>
+
+    <div class="ui">
+        <h1>Hermetic Blob</h1>
+        <p>Come Closer..</p>
+    </div>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+
+// --- KURULUM ---
+const container = document.getElementById('canvas-container');
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 100);
+camera.position.z = 6;
+
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+container.appendChild(renderer.domElement);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.enablePan = false;
+
+// --- KATMAN 1: DIŞ KABUK (SHADER KULLANAN BLOB) ---
+const shellGeo = new THREE.IcosahedronGeometry(2.5, 64); // Yüksek detay
+const shellMat = new THREE.ShaderMaterial({
+    vertexShader: document.getElementById('vertexShader').textContent,
+    fragmentShader: document.getElementById('fragmentShader').textContent,
+    uniforms: {
+        uTime: { value: 0 },
+        uMouse: { value: new THREE.Vector2(0, 0) }
+    },
+    transparent: true,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    side: THREE.DoubleSide
+});
+
+const shell = new THREE.Mesh(shellGeo, shellMat);
+scene.add(shell);
+
+// --- KATMAN 2: İÇ ÇEKİRDEK (PARÇACIK SİSTEMİ) ---
+const coreParticlesGeo = new THREE.BufferGeometry();
+const corePositions = [];
+const coreCount = 2000;
+
+for (let i = 0; i < coreCount; i++) {
+    const r = Math.random() * 1.5;
+    const theta = Math.random() * Math.PI * 2;
+    const phi = Math.acos((Math.random() * 2) - 1);
+    
+    corePositions.push(
+        r * Math.sin(phi) * Math.cos(theta),
+        r * Math.sin(phi) * Math.sin(theta),
+        r * Math.cos(phi)
+    );
+}
+coreParticlesGeo.setAttribute('position', new THREE.Float32BufferAttribute(corePositions, 3));
+
+const coreMat = new THREE.PointsMaterial({
+    color: 0xffffff,
+    size: 0.05,
+    blending: THREE.AdditiveBlending,
+    transparent: true,
+    sizeAttenuation: true
+});
+
+const coreParticles = new THREE.Points(coreParticlesGeo, coreMat);
+scene.add(coreParticles);
+
+// --- KATMAN 3: ÇEVRE (YILDIZLAR) ---
+const starGeo = new THREE.BufferGeometry();
+const starPositions = [];
+for (let i = 0; i < 5000; i++) {
+    starPositions.push(
+        (Math.random() - 0.5) * 50,
+        (Math.random() - 0.5) * 50,
+        (Math.random() - 0.5) * 50
+    );
+}
+starGeo.setAttribute('position', new THREE.Float32BufferAttribute(starPositions, 3));
+const starMat = new THREE.PointsMaterial({ color: 0x555555, size: 0.02 });
+const stars = new THREE.Points(starGeo, starMat);
+scene.add(stars);
+
+// --- POST PROCESSING (BLOOM) ---
+const renderScene = new RenderPass(scene, camera);
+const bloomPass = new UnrealBloomPass(
+    new THREE.Vector2(window.innerWidth, window.innerHeight),
+    1.5, // Strength
+    0.4, // Radius
+    0.85 // Threshold
+);
+
+const composer = new EffectComposer(renderer);
+composer.addPass(renderScene);
+composer.addPass(bloomPass);
+
+// --- ETKİLEŞİM ---
+const mouse = new THREE.Vector2();
+window.addEventListener('mousemove', (e) => {
+    mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+    mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+});
+
+// --- ANİMASYON ---
+const clock = new THREE.Clock();
+
+function animate() {
+    requestAnimationFrame(animate);
+    const elapsedTime = clock.getElapsedTime();
+
+    // Uniform'ları güncelle
+    shellMat.uniforms.uTime.value = elapsedTime;
+    shellMat.uniforms.uMouse.value.lerp(mouse, 0.05);
+
+    // İç çekirdeği döndür
+    coreParticles.rotation.y = elapsedTime * 0.2;
+    coreParticles.rotation.x = elapsedTime * 0.1;
+
+    // Çekirdeğin rengini değiştir
+    coreMat.color.setHSL((elapsedTime * 0.1) % 1, 1, 0.5);
+
+    controls.update();
+    composer.render();
+}
+
+window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    composer.setSize(window.innerWidth, window.innerHeight);
+});
+
+animate();
+</script>
+</body>
+</html>

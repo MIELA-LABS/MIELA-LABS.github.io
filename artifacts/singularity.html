@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MIELA LABS | SINGULARITY</title>
+<style>
+    @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap');
+
+    body, html {
+        margin: 0;
+        padding: 0;
+        width: 100%;
+        height: 100%;
+        background-color: #000;
+        overflow: hidden;
+        font-family: 'Share Tech Mono', monospace;
+    }
+
+    #canvas-container {
+        width: 100%;
+        height: 100%;
+        position: absolute;
+        z-index: 1;
+    }
+
+    .interface {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        z-index: 2;
+        pointer-events: none;
+        padding: 40px;
+        box-sizing: border-box;
+        color: rgba(255, 255, 255, 0.8);
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        background: radial-gradient(circle at center, transparent 50%, rgba(0,0,0,0.8) 100%);
+    }
+
+    .header h1 {
+        font-size: 3rem;
+        margin: 0;
+        letter-spacing: 5px;
+        text-shadow: 0 0 20px rgba(0, 255, 255, 0.5);
+    }
+
+    .blink {
+        animation: blinker 1s linear infinite;
+        color: #00ffff;
+    }
+
+    @keyframes blinker { 50% { opacity: 0; } }
+
+    .subtitle {
+        font-size: 0.9rem;
+        color: #666;
+        letter-spacing: 2px;
+        margin-top: 5px;
+    }
+
+    .data-stream {
+        font-size: 0.8rem;
+        line-height: 1.5;
+        border-left: 2px solid #00ffff;
+        padding-left: 15px;
+    }
+
+    .footer {
+        text-align: right;
+        font-size: 0.7rem;
+        opacity: 0.5;
+        letter-spacing: 2px;
+    }
+</style>
+
+<!-- Vertex Shader: Sıvı Metal Matematiği -->
+<script type="x-shader/x-vertex" id="vertexShader">
+    uniform float uTime;
+    uniform vec2 uMouse;
+    uniform float uDistort;
+    
+    varying vec2 vUv;
+    varying vec3 vNormal;
+    varying vec3 vPos;
+    varying float vNoise;
+
+    // --- NOISE FUNCTIONS ---
+    vec3 mod289(vec3 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
+    vec4 mod289(vec4 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
+    vec4 permute(vec4 x) { return mod289(((x*34.0)+1.0)*x); }
+    vec4 taylorInvSqrt(vec4 r) { return 1.79284291400159 - 0.85373472095314 * r; }
+    float snoise(vec3 v) {
+        const vec2  C = vec2(1.0/6.0, 1.0/3.0) ;
+        const vec4  D = vec4(0.0, 0.5, 1.0, 2.0);
+        vec3 i  = floor(v + dot(v, C.yyy) );
+        vec3 x0 = v - i + dot(i, C.xxx) ;
+        vec3 g = step(x0.yzx, x0.xyz);
+        vec3 l = 1.0 - g;
+        vec3 i1 = min( g.xyz, l.zxy );
+        vec3 i2 = max( g.xyz, l.zxy );
+        vec3 x1 = x0 - i1 + C.xxx;
+        vec3 x2 = x0 - i2 + C.yyy;
+        vec3 x3 = x0 - D.yyy;
+        i = mod289(i);
+        vec4 p = permute( permute( permute(
+                i.z + vec4(0.0, i1.z, i2.z, 1.0 ))
+                + i.y + vec4(0.0, i1.y, i2.y, 1.0 ))
+                + i.x + vec4(0.0, i1.x, i2.x, 1.0 ));
+        float n_ = 0.142857142857;
+        vec3  ns = n_ * D.wyz - D.xzx;
+        vec4 j = p - 49.0 * floor(p * ns.z * ns.z);
+        vec4 x_ = floor(j * ns.z);
+        vec4 y_ = floor(j - 7.0 * x_ );
+        vec4 x = x_ *ns.x + ns.yyyy;
+        vec4 y = y_ *ns.x + ns.yyyy;
+        vec4 h = 1.0 - abs(x) - abs(y);
+        vec4 b0 = vec4( x.xy, y.xy );
+        vec4 b1 = vec4( x.zw, y.zw );
+        vec4 s0 = floor(b0)*2.0 + 1.0;
+        vec4 s1 = floor(b1)*2.0 + 1.0;
+        vec4 sh = -step(h, vec4(0.0));
+        vec4 a0 = b0.xzyw + s0.xzyw*sh.xxyy ;
+        vec4 a1 = b1.xzyw + s1.xzyw*sh.zzww ;
+        vec3 p0 = vec3(a0.xy,h.x);
+        vec3 p1 = vec3(a0.zw,h.y);
+        vec3 p2 = vec3(a1.xy,h.z);
+        vec3 p3 = vec3(a1.zw,h.w);
+        vec4 norm = taylorInvSqrt(vec4(dot(p0,p0), dot(p1,p1), dot(p2, p2), dot(p3,p3)));
+        p0 *= norm.x; p1 *= norm.y; p2 *= norm.z; p3 *= norm.w;
+        return 42.0 * dot( m, g );
+    }
+
+    void main() {
+        vUv = uv;
+        vNormal = normal;
+        
+        // Karmaşık Noise Katmanları
+        float noise1 = snoise(position * 0.5 + uTime * 0.2);
+        float noise2 = snoise(position * 2.0 - uTime * 0.5);
+        float combinedNoise = noise1 * 0.6 + noise2 * 0.4;
+        
+        vNoise = combinedNoise; // Fragment shader'a gönder
+        
+        // Mouse Etkileşimi (Manyetik Alan)
+        float dist = distance(uv, uMouse);
+        float mouseEffect = smoothstep(0.5, 0.0, dist) * uDistort;
+        
+        // Vertex'leri normal yönünde patlat
+        vec3 newPos = position + normal * (combinedNoise * (1.0 + mouseEffect));
+        
+        vPos = newPos;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(newPos, 1.0);
+    }
+</script>
+
+<!-- Fragment Shader: Krom ve Enerji -->
+<script type="x-shader/x-fragment" id="fragmentShader">
+    uniform float uTime;
+    varying vec2 vUv;
+    varying vec3 vNormal;
+    varying float vNoise;
+    varying vec3 vPos;
+
+    void main() {
+        // Renk Paleti: Deep Void -> Cyber Cyan -> Plasma Pink
+        vec3 colorA = vec3(0.0, 0.0, 0.1); // Siyah/Lacivert
+        vec3 colorB = vec3(0.0, 1.0, 1.0); // Cyan
+        vec3 colorC = vec3(1.0, 0.0, 0.5); // Magenta
+        
+        // Noise değerine göre renk karışımı
+        float mixVal = smoothstep(-0.5, 0.5, vNoise);
+        vec3 color = mix(colorA, colorB, mixVal);
+        
+        // Yüksek noktalara (tepelere) Magenta ekle
+        color = mix(color, colorC, smoothstep(0.2, 0.6, vNoise));
+        
+        // Fresnel Efekti (Kenar Parlaması - Krom hissi)
+        vec3 viewDir = normalize(cameraPosition - vPos);
+        float fresnel = dot(viewDir, vNormal);
+        fresnel = clamp(1.0 - fresnel, 0.0, 1.0);
+        fresnel = pow(fresnel, 3.0);
+        
+        color += vec3(1.0) * fresnel * 0.8; // Beyaz yansıma
+        
+        gl_FragColor = vec4(color, 1.0);
+    }
+</script>
+
+<!-- Three.js Imports -->
+<script type="importmap">
+  {
+    "imports": {
+      "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+    }
+  }
+</script>
+</head>
+<body>
+
+    <div id="canvas-container"></div>
+
+    <div class="interface">
+        <div class="header">
+            <h1>SINGULARITY <span class="blink">_v9.0</span></h1>
+            <div class="subtitle">NEURAL NETWORK INITIALIZATION</div>
+        </div>
+        
+        <div class="data-stream">
+            <p>> CORE TEMP: <span id="temp">3000</span> K</p>
+            <p>> ENTROPY: STABLE</p>
+            <p>> INTERACTION: ENABLED</p>
+        </div>
+
+        <div class="footer">
+            DRAG TO ROTATE // SCROLL TO ZOOM // OBSERVE THE BIRTH
+        </div>
+    </div>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { FilmPass } from 'three/addons/postprocessing/FilmPass.js';
+
+// --- SETUP ---
+const container = document.getElementById('canvas-container');
+const scene = new THREE.Scene();
+// Arka plan: Tamamen siyah değil, çok koyu bir lacivert
+scene.background = new THREE.Color(0x020205);
+scene.fog = new THREE.FogExp2(0x020205, 0.02);
+
+const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 100);
+camera.position.z = 4;
+
+const renderer = new THREE.WebGLRenderer({ antialias: false }); // Post-processing için false
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+container.appendChild(renderer.domElement);
+
+// --- CONTROLS ---
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.autoRotate = true;
+controls.autoRotateSpeed = 0.5;
+
+// --- THE SINGULARITY (CORE OBJECT) ---
+// IcosahedronGeometry: Küreye göre daha "kristalize" bir yapı sağlar
+const geometry = new THREE.IcosahedronGeometry(1.5, 60); // Yüksek detay
+
+const material = new THREE.ShaderMaterial({
+    vertexShader: document.getElementById('vertexShader').textContent,
+    fragmentShader: document.getElementById('fragmentShader').textContent,
+    uniforms: {
+        uTime: { value: 0 },
+        uMouse: { value: new THREE.Vector2(0, 0) },
+        uDistort: { value: 0 }
+    },
+    wireframe: false
+});
+
+const singularity = new THREE.Mesh(geometry, material);
+scene.add(singularity);
+
+// --- ORBITAL DATA RINGS (HALKALAR) ---
+const ringGroup = new THREE.Group();
+const ringGeo = new THREE.TorusGeometry(3, 0.02, 16, 100);
+const ringMat = new THREE.MeshBasicMaterial({ color: 0x444444, transparent: true, opacity: 0.3 });
+
+for(let i=0; i<3; i++) {
+    const ring = new THREE.Mesh(ringGeo, ringMat);
+    ring.rotation.x = Math.random() * Math.PI;
+    ring.rotation.y = Math.random() * Math.PI;
+    ring.scale.setScalar(1 + i * 0.5);
+    ringGroup.add(ring);
+}
+scene.add(ringGroup);
+
+// --- PARTICLE FIELD (YILDIZ TOZU) ---
+const particlesGeo = new THREE.BufferGeometry();
+const particlesCount = 2000;
+const posArray = new Float32Array(particlesCount * 3);
+
+for(let i=0; i<particlesCount * 3; i++) {
+    posArray[i] = (Math.random() - 0.5) * 15;
+}
+
+particlesGeo.setAttribute('position', new THREE.BufferAttribute(posArray, 3));
+const particlesMat = new THREE.PointsMaterial({
+    size: 0.02,
+    color: 0x00ffff,
+    transparent: true,
+    opacity: 0.6,
+    blending: THREE.AdditiveBlending
+});
+const particlesMesh = new THREE.Points(particlesGeo, particlesMat);
+scene.add(particlesMesh);
+
+// --- POST PROCESSING (CINEMATIC LOOK) ---
+const renderScene = new RenderPass(scene, camera);
+
+// 1. Bloom: O ilahi parlamayı verir
+const bloomPass = new UnrealBloomPass(
+    new THREE.Vector2(window.innerWidth, window.innerHeight),
+    1.5, // Strength
+    0.4, // Radius
+    0.85 // Threshold
+);
+
+// 2. Film Grain: Analog/Eski kayıt hissi verir
+const filmPass = new FilmPass(
+    0.35, // Noise intensity
+    0.025, // Scanline intensity
+    648,  // Scanline count
+    false // Grayscale
+);
+
+const composer = new EffectComposer(renderer);
+composer.addPass(renderScene);
+composer.addPass(bloomPass);
+composer.addPass(filmPass);
+
+// --- INTERACTION ---
+const mouse = new THREE.Vector2();
+let targetDistort = 0;
+
+window.addEventListener('mousemove', (e) => {
+    mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+    mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+    
+    // Mouse merkeze ne kadar yakınsa o kadar distortion
+    const dist = Math.sqrt(mouse.x*mouse.x + mouse.y*mouse.y);
+    targetDistort = Math.max(0, 1.0 - dist) * 2.0;
+});
+
+// --- ANIMATION LOOP ---
+const clock = new THREE.Clock();
+
+function animate() {
+    requestAnimationFrame(animate);
+    
+    const time = clock.getElapsedTime();
+    
+    // Shader Uniforms
+    material.uniforms.uTime.value = time;
+    material.uniforms.uMouse.value.lerp(mouse, 0.1);
+    material.uniforms.uDistort.value = THREE.MathUtils.lerp(material.uniforms.uDistort.value, targetDistort, 0.05);
+    
+    // Objelerin Dönüşü
+    singularity.rotation.y = time * 0.1;
+    ringGroup.rotation.x = time * 0.05;
+    ringGroup.rotation.y = time * 0.05;
+    particlesMesh.rotation.y = -time * 0.02;
+    
+    // UI Güncelleme (Sıcaklık Değişimi)
+    const temp = 3000 + Math.sin(time) * 500 + (material.uniforms.uDistort.value * 2000);
+    document.getElementById('temp').innerText = Math.floor(temp);
+
+    controls.update();
+    composer.render();
+}
+
+window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    composer.setSize(window.innerWidth, window.innerHeight);
+});
+
+animate();
+</script>
+</body>
+</html>
