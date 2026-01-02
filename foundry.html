@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Miela Labs | The Foundry</title>
+    
+    <!-- FONTS -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@100;400;700&family=Syncopate:wght@400;700&family=Inter:wght@300;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <!-- GSAP -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+
+    <style>
+        /* --- CORE VARIABLES --- */
+        :root {
+            --bg-dark: #050505;
+            --text-main: #e0e0e0;
+            --neon-purple: #bd00ff;
+            --neon-cyan: #00f3ff;
+            --neon-acid: #ccff00;
+            --neon-crimson: #ff0055;
+            --border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        /* --- BASE STYLES --- */
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            background-color: var(--bg-dark);
+            color: var(--text-main);
+            font-family: 'Inter', sans-serif;
+            overflow-x: hidden;
+        }
+        
+        .mono { font-family: 'JetBrains Mono', monospace; }
+        .display-font { font-family: 'Syncopate', sans-serif; text-transform: uppercase; }
+
+        .container { max-width: 1400px; margin: 0 auto; padding: 0 40px; }
+
+        /* --- HEADER --- */
+        header { padding: 40px 0; display: flex; justify-content: space-between; align-items: center; border-bottom: var(--border); }
+        .logo { font-size: 1.5rem; font-weight: 700; letter-spacing: -1px; text-decoration: none; color: #fff; }
+        .logo span { color: var(--neon-purple); }
+        .back-link { font-size: 0.8rem; color: #666; text-decoration: none; transition: 0.3s; }
+        .back-link:hover { color: #fff; }
+
+        /* --- HERO --- */
+        .foundry-hero { padding: 80px 0; text-align: center; }
+        .foundry-hero h1 { font-size: 3rem; margin-bottom: 20px; color: #fff; }
+        .foundry-hero p { max-width: 600px; margin: 0 auto; color: #888; }
+
+        /* --- GRID SYSTEM --- */
+        .artifact-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            gap: 30px;
+            padding-bottom: 100px;
+        }
+
+        /* ARTIFACT CARD */
+        .artifact-card {
+            background: #0a0a0a;
+            border: 1px solid #222;
+            height: 400px;
+            position: relative;
+            overflow: hidden;
+            transition: all 0.4s ease;
+            cursor: pointer;
+        }
+
+        .artifact-card:hover {
+            border-color: var(--neon-purple);
+            transform: translateY(-5px);
+            box-shadow: 0 10px 40px rgba(189, 0, 255, 0.15);
+        }
+
+        /* LIVE PREVIEW (Iframe Scaled) */
+        .card-preview {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none;
+            opacity: 0.6;
+            transition: 0.4s;
+            filter: grayscale(100%) contrast(1.2);
+            background: #000;
+        }
+        
+        .artifact-card:hover .card-preview { opacity: 1; filter: grayscale(0%) contrast(1); }
+
+        /* CARD INFO */
+        .card-info {
+            position: absolute; bottom: 0; left: 0; width: 100%;
+            padding: 20px;
+            background: linear-gradient(to top, #000 0%, transparent 100%);
+            z-index: 2;
+            transform: translateY(20px);
+            transition: 0.4s;
+        }
+        .artifact-card:hover .card-info { transform: translateY(0); }
+
+        .card-type { font-size: 0.7rem; color: var(--neon-acid); margin-bottom: 5px; }
+        .card-title { font-size: 1.5rem; font-weight: 700; margin-bottom: 5px; color: #fff; }
+        .card-tech { font-size: 0.7rem; color: #666; display: flex; gap: 10px; }
+        .tag { border: 1px solid #333; padding: 2px 6px; border-radius: 4px; }
+
+        /* INSPECT BUTTON */
+        .inspect-btn {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%) scale(0.8);
+            padding: 15px 30px; border: 1px solid #fff; color: #fff; background: rgba(0,0,0,0.8);
+            text-transform: uppercase; letter-spacing: 2px; opacity: 0; transition: 0.3s;
+            backdrop-filter: blur(5px); z-index: 5;
+        }
+        .artifact-card:hover .inspect-btn { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+
+        /* --- FULLSCREEN MODAL (THE PORTAL) --- */
+        #portal-modal {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: #000; z-index: 9999;
+            display: none; opacity: 0;
+            flex-direction: column;
+        }
+
+        .portal-header {
+            height: 60px; background: rgba(10,10,10,0.9); border-bottom: 1px solid #333;
+            display: flex; justify-content: space-between; align-items: center; padding: 0 30px;
+            z-index: 10;
+        }
+
+        .close-portal {
+            background: transparent; border: 1px solid var(--neon-crimson); color: var(--neon-crimson);
+            padding: 8px 20px; cursor: pointer; font-family: 'JetBrains Mono'; font-size: 0.8rem;
+            transition: 0.3s;
+        }
+        .close-portal:hover { background: var(--neon-crimson); color: #fff; box-shadow: 0 0 15px var(--neon-crimson); }
+
+        #portal-frame { flex-grow: 1; width: 100%; height: 100%; border: none; background: #000; }
+
+        @media (max-width: 768px) { .artifact-grid { grid-template-columns: 1fr; } }
+    </style>
+</head>
+<body>
+
+    <!-- THE PORTAL (POP-UP) -->
+    <div id="portal-modal">
+        <div class="portal-header">
+            <div class="mono" style="color: #fff;">RUNNING: <span id="portal-title" style="color: var(--neon-cyan);">UNKNOWN</span></div>
+            <button class="close-portal" onclick="closePortal()">TERMINATE SESSION [X]</button>
+        </div>
+        <iframe id="portal-frame" src=""></iframe>
+    </div>
+
+    <div class="container">
+        <header>
+            <a href="index.html" class="logo display-font">MIELA<span>LABS</span></a>
+            <a href="index.html" class="back-link mono"><i class="fa-solid fa-arrow-left"></i> RETURN TO HQ</a>
+        </header>
+
+        <section class="foundry-hero">
+            <h1 class="display-font">THE FOUNDRY</h1>
+            <p class="mono">Active R&D Experiments. Click to Initialize.</p>
+        </section>
+
+        <!-- SENİN GÖNDERDİĞİN GÜNCEL GRID BURADA -->
+        <div class="artifact-grid">
+
+            <!-- 1. HERMETIC BLOB -->
+            <div class="artifact-card" onclick="openPortal('HERMETIC BLOB', 'artifacts/hermetic-blob.html')">
+                <div class="card-preview">
+                    <iframe src="artifacts/hermetic-blob.html" style="width: 200%; height: 200%; transform: scale(0.5); transform-origin: 0 0; border: none; pointer-events: none;"></iframe>
+                </div>
+                <div class="inspect-btn mono">INITIALIZE</div>
+                <div class="card-info">
+                    <div class="card-type mono">:: ORGANIC SHADER</div>
+                    <div class="card-title display-font">HERMETIC BLOB</div>
+                    <div class="card-tech mono"><span class="tag">THREE.JS</span> <span class="tag">FLUID</span></div>
+                </div>
+            </div>
+
+            <!-- 2. QUANTUM CORE -->
+            <div class="artifact-card" onclick="openPortal('QUANTUM CORE', 'artifacts/quantum-core.html')">
+                <div class="card-preview">
+                    <iframe src="artifacts/quantum-core.html" style="width: 200%; height: 200%; transform: scale(0.5); transform-origin: 0 0; border: none; pointer-events: none;"></iframe>
+                </div>
+                <div class="inspect-btn mono">INITIALIZE</div>
+                <div class="card-info">
+                    <div class="card-type mono">:: PARTICLE PHYSICS</div>
+                    <div class="card-title display-font">QUANTUM CORE</div>
+                    <div class="card-tech mono"><span class="tag">WEBGL</span> <span class="tag">ENERGY</span></div>
+                </div>
+            </div>
+
+            <!-- 3. SINGULARITY -->
+            <div class="artifact-card" onclick="openPortal('SINGULARITY', 'artifacts/singularity.html')">
+                <div class="card-preview">
+                    <iframe src="artifacts/singularity.html" style="width: 200%; height: 200%; transform: scale(0.5); transform-origin: 0 0; border: none; pointer-events: none;"></iframe>
+                </div>
+                <div class="inspect-btn mono">INITIALIZE</div>
+                <div class="card-info">
+                    <div class="card-type mono">:: GRAVITY SIM</div>
+                    <div class="card-title display-font">SINGULARITY</div>
+                    <div class="card-tech mono"><span class="tag">MATH</span> <span class="tag">VOID</span></div>
+                </div>
+            </div>
+
+            <!-- 4. STARGATE -->
+            <div class="artifact-card" onclick="openPortal('STARGATE', 'artifacts/stargate.html')">
+                <div class="card-preview">
+                    <iframe src="artifacts/stargate.html" style="width: 200%; height: 200%; transform: scale(0.5); transform-origin: 0 0; border: none; pointer-events: none;"></iframe>
+                </div>
+                <div class="inspect-btn mono">INITIALIZE</div>
+                <div class="card-info">
+                    <div class="card-type mono">:: LIGHT TRANSPORT</div>
+                    <div class="card-title display-font">STARGATE</div>
+                    <div class="card-tech mono"><span class="tag">RAYMARCHING</span> <span class="tag">NEON</span></div>
+                </div>
+            </div>
+
+            <!-- 5. BTC (BITCOIN VISUALIZER) -->
+            <div class="artifact-card" onclick="openPortal('BTC PROTOCOL', 'artifacts/btc.html')">
+                <div class="card-preview">
+                    <iframe src="artifacts/btc.html" style="width: 200%; height: 200%; transform: scale(0.5); transform-origin: 0 0; border: none; pointer-events: none;"></iframe>
+                </div>
+                <div class="inspect-btn mono">INITIALIZE</div>
+                <div class="card-info">
+                    <div class="card-type mono">:: FINANCIAL DATA</div>
+                    <div class="card-title display-font">BTC PROTOCOL</div>
+                    <div class="card-tech mono"><span class="tag">CRYPTO</span> <span class="tag">DATA-VIZ</span></div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <script>
+        // --- PORTAL LOGIC ---
+        const portal = document.getElementById('portal-modal');
+        const frame = document.getElementById('portal-frame');
+        const title = document.getElementById('portal-title');
+
+        function openPortal(name, url) {
+            title.innerText = name;
+            frame.src = url;
+            portal.style.display = 'flex';
+            
+            gsap.fromTo(portal, 
+                { opacity: 0, scaleY: 0.01, scaleX: 0 },
+                { opacity: 1, scaleY: 1, scaleX: 1, duration: 0.5, ease: "power2.inOut" }
+            );
+            document.body.style.overflow = 'hidden';
+        }
+
+        function closePortal() {
+            gsap.to(portal, { 
+                opacity: 0, scaleY: 0.01, scaleX: 0, duration: 0.4, ease: "power2.inOut",
+                onComplete: () => {
+                    portal.style.display = 'none';
+                    frame.src = ''; 
+                }
+            });
+            document.body.style.overflow = 'auto';
+        }
+
+        // Animation
+        gsap.from(".artifact-card", { 
+            y: 50, opacity: 0, duration: 1, stagger: 0.1, ease: "power2.out" 
+        });
+    </script>
+</body>
+</html>
